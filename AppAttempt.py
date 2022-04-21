@@ -10,26 +10,25 @@ from tqdm import tqdm
 class App:
     IP = socket.gethostbyname(socket.gethostname())
     PORT = 9876
-
     TRANSFERPORT = 4456
-    ADDR = (IP, TRANSFERPORT)
 
     def __init__(self,setting):
         self.IP = socket.gethostbyname(socket.gethostname())
         self.PORT = 9876
+        self.TRANSFERPORT = 4456
         self.setting = setting
 
-    def get_file(self):
-            data = client_socket.recv(1024).decode("utf-8")
-            item = data.split("_")
-            FILENAME = item[0]
-            FILESIZE = int(item[1])
+    def get_file(self, sender):
+            data = sender.recv(2048).decode("utf-8")
+            contents = data.split("_")
+            name = contents[0]
+            size = int(contents[1])
 
-            bar = tqdm(range(FILESIZE), f"Receiving {FILENAME}", unit="B", unit_scale=True,
-                       unit_divisor=1024)
-            with open(f"recv_{FILENAME}", "w") as f:
+            bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True,
+                       unit_divisor=2048)
+            with open(f"recv_{name}", "w") as f:
                 while True:
-                    data = client_socket.recv(1024).decode("utf-8")
+                    data = sender.recv(2048).decode("utf-8")
 
                     if not data:
                         break
@@ -37,23 +36,47 @@ class App:
                     f.write(data)
                     bar.update(len(data))
 
-    def send_file(self):
-        FILENAME = input("Input file name:")
-        FILESIZE = os.path.getsize(FILENAME)
+    def send_file(self, target):
+        name = input("Input file name:")
+        size = os.path.getsize(name)
 
-        data = f"{FILENAME}_{FILESIZE}"
-        client_socket.send(data.encode("utf-8"))
+        data = f"{name}_{size}"
+        target.send(data.encode("utf-8"))
 
-        bar = tqdm(range(FILESIZE), f"Sending {FILENAME}", unit="B", unit_scale=True, unit_divisor=1024)
+        bar = tqdm(range(size), f"Sending {name}", unit="B", unit_scale=True, unit_divisor=2048)
 
-        with open(FILENAME, "r") as f:
+        with open(name, "r") as f:
             while True:
-                data = f.read(800000)
+                data = f.read(2048)
                 if not data:
                     break
-                client_socket.send(data.encode("utf-8"))
+                target.send(data.encode("utf-8"))
                 bar.update(len(data))
-    def datasend(self):
+
+    def dataprotocol(self):
+        if self.setting == "host":
+            receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            receiver.bind((self.IP, self.TRANSFERPORT))
+            receiver.listen()
+            print("Awaiting Sender Connection...")
+
+            sender, address = receiver.accept()
+            print(f"Sender connected from {address[0]}:{address[1]}")
+            self.get_file(sender)
+
+            sender.close()
+            receiver.close()
+            time.sleep(10)
+
+        if self.setting == "client":
+            sender = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sender.connect((self.IP,self.TRANSFERPORT))
+
+            self.send_file(sender)
+
+            sender.close()
+            time.sleep(10)
+
     def HostFunctions(self):
         global setting
         setting = "Host"
@@ -121,21 +144,12 @@ class App:
                         print(
                             f"Received message from {user['data'].decode('utf-8')}: {message['data'].decode('utf-8')}")
 
-                        if message['data'].decode('utf-8') == "testing":
-                            print("test success")
-                            # rudimentary test showing interalized function calls can be made possible through decoding
-                            # can be fleshed out to include customizable ip/port input without much difficulty, this is just a
-                            # baseline
-
                         if message['data'].decode('utf-8') == "quit":
                             client_socket.shutdown(socket.SHUT_RDWR)
                             client_socket.close()
 
                         if message['data'].decode('utf-8') == "swap":
                             server_socket.close()
-
-                        if message['data'].decode('utf-8') == "send":
-                            filetransfer()
 
                         for client_socket in clients:
                             if client_socket != notified_socket:
@@ -148,7 +162,7 @@ class App:
             except Exception as e:
                 break
                 #sys.exit("Connection Termination Request Accepted from Peer")
-        time.sleep(15)
+        time.sleep(10)
         self.ClientFunctions()
 
 
@@ -164,8 +178,7 @@ class App:
         IP = App.IP
         PORT = App.PORT
 
-        # my_user = input("Username:\n")
-        my_user = "Client"
+        my_user = input("Username:\n")
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((IP, PORT))
@@ -190,12 +203,6 @@ class App:
                 client_socket.send(message_header + message)
                 time.sleep(10)
                 self.HostFunctions()
-
-            if message == "send":
-                message = (message).encode("utf-8")
-                message_header = f"{len(message):<{HEADER_LENGTH}}".encode("utf-8")
-                client_socket.send(message_header + message)
-                file_transfer()
 
             if message == message:
                 message = str(message).encode("utf-8")
@@ -231,11 +238,22 @@ class App:
 
     def Startup(self, x):
         options = ["host", "join", "quit"]
+        fileshare = input("Send/receive files? [yes/no]\n").lower().strip()
+
         if x in options:
-            if x == "host":
+            if x == "host" and fileshare == "yes":
+                creation.setting = "host"
+                creation.dataprotocol()
                 creation.HostFunctions()
-                print(creation.setting)
-            elif x == "join":
+            elif x == "join" and fileshare == "yes":
+                creation.setting = "client"
+                creation.dataprotocol()
+                creation.ClientFunctions()
+            if x == "host" and fileshare == "no":
+                creation.setting = "host"
+                creation.HostFunctions()
+            elif x == "join" and fileshare == "no":
+                creation.setting = "client"
                 creation.ClientFunctions()
             elif x == "quit":
                 return
@@ -244,8 +262,6 @@ class App:
             self.Startup(y)
 
 
-
-
-startup = input("Host a connection or join a connect? [host/join/quit]\n").lower().strip()
-creation = App(startup)
+startup = input("Host a connection or join a connection? [host/join/quit]\n").lower().strip()
+creation = App("created")
 creation.Startup(startup)
