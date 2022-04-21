@@ -24,17 +24,31 @@ class App:
             name = contents[0]
             size = int(contents[1])
 
-            bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True,
-                       unit_divisor=2048)
-            with open(f"recv_{name}", "w") as f:
-                while True:
-                    data = sender.recv(2048).decode("utf-8")
+            print("File's name:", name," Files Size: ", size, "bits")
+            inquire = input("Do you wish to accept the file? [yes/no]\n").lower().strip()
 
-                    if not data:
-                        break
+            sender.send(inquire.encode("utf-8"))
 
-                    f.write(data)
-                    bar.update(len(data))
+            if(inquire == "yes"):
+                bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True,
+                           unit_divisor=2048)
+                with open(f"recv_{name}", "w") as f:
+                    while True:
+                        data = sender.recv(2048).decode("utf-8")
+
+                        if not data:
+                            break
+
+                        f.write(data)
+                        bar.update(len(data))
+            else:
+                reply = sender.recv(2048).decode("utf-8")
+                print(f"Does sender have additional files? {reply}")
+                if reply == "yes":
+                    self.get_file(sender)
+                else:
+                    return
+
 
     def send_file(self, target):
         name = input("Input file name:")
@@ -43,20 +57,32 @@ class App:
         data = f"{name}_{size}"
         target.send(data.encode("utf-8"))
 
-        bar = tqdm(range(size), f"Sending {name}", unit="B", unit_scale=True, unit_divisor=2048)
+        msg = target.recv(1024).decode("utf-8")
+        print(f"Did target accept: {msg}")
 
-        with open(name, "r") as f:
-            while True:
-                data = f.read(2048)
-                if not data:
-                    break
-                target.send(data.encode("utf-8"))
-                bar.update(len(data))
+        if msg == "yes":
+            bar = tqdm(range(size), f"Sending {name}", unit="B", unit_scale=True, unit_divisor=2048)
+            with open(name, "r") as f:
+                while True:
+                    data = f.read(2048)
+                    if not data:
+                        break
+                    target.send(data.encode("utf-8"))
+                    bar.update(len(data))
+        else:
+            inquiry = input("Register another file? [yes/no]\n").lower().strip()
+            if inquiry == "yes":
+                target.send("yes".encode("utf-8"))
+                self.send_file(target)
+            else:
+                target.send("no".encode("utf-8"))
+                return
 
     def dataprotocol(self):
         if self.setting == "host":
             receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            receiver.bind((self.IP, self.TRANSFERPORT))
+            receiver.bind(('', self.TRANSFERPORT))
+            print("Host IP:", self.IP)
             receiver.listen()
             print("Awaiting Sender Connection...")
 
