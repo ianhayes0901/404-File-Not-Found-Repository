@@ -185,6 +185,7 @@ class App:
                 message = f'{user}:_{text}'
                 client.send(message.encode('utf-8'))
 
+
         receive_thread = threading.Thread(target=client_receive)
         receive_thread.start()
 
@@ -224,27 +225,52 @@ class App:
                 target.send(data.encode("utf-8"))
                 bar.update(len(data))
 
+    def data_protocol(self):
+        if self.setting == "host":
+            receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            receiver.bind(('', self.Transfer))
+            print("Host IP:", self.IP)
+            receiver.listen()
+            print("Awaiting Sender Connection...")
+
+            sender, address = receiver.accept()
+            print(f"Sender connected from {address[0]}:{address[1]}")
+            self.get_file(sender)
+
+            sender.close()
+            receiver.close()
+            time.sleep(10)
+
+        if self.setting == "client":
+            sender = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sender.connect((self.IP,self.Transfer))
+
+            self.send_file(sender)
+
+            sender.close()
+            time.sleep(10)
+
     def Startup(self, x):
         options = ["host", "join", "quit"]
-        # fileshare = input("Send/receive files? [yes/no]\n").lower().strip()
+        fileshare = input("Send/receive files? [yes/no]\n").lower().strip()
 
         if x in options:
-            if x == "host":  # and fileshare == "yes":
+            if x == "host" and fileshare == "yes":
+                self.setting = "host"
+                self.data_protocol()
+                self.host_mode()
+            elif x == "join" and fileshare == "yes":
+                self.setting = "client"
+                self.data_protocol()
+                self.client_mode()
+            if x == "host" and fileshare == "no":
                 self.setting = "host"
                 self.host_mode()
-                # self.data_protocol()
-            elif x == "join":  # and fileshare == "yes":
+            elif x == "join" and fileshare == "no":
                 self.setting = "client"
                 self.client_mode()
-                # self.data_protocol()
-            # if x == "host" and fileshare == "no":
-            #    self.setting = "host"
-            #    self.HostFunctions()
-            # elif x == "join" and fileshare == "no":
-            #    self.setting = "client"
-            #    self.ClientFunctions()
-            # elif x == "quit":
-            #    return
+            elif x == "quit":
+                return
         else:
             y = input("Host a connection or join a connect? [host/join/quit]\n").lower().strip()
             self.Startup(y)
