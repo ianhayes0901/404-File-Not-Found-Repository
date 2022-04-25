@@ -12,43 +12,51 @@ class App:
     PORT = 9876
     TRANSFERPORT = 4456
 
-    def __init__(self,setting):
+    def __init__(self, setting):
         self.IP = socket.gethostbyname(socket.gethostname())
         self.PORT = 9876
         self.TRANSFERPORT = 4456
         self.setting = setting
+        self.fileDict = {}
 
     def get_file(self, sender):
-            data = sender.recv(2048).decode("utf-8")
-            contents = data.split("_")
-            name = contents[0]
-            size = int(contents[1])
+        data = sender.recv(2048).decode("utf-8")
+        contents = data.split("_")
+        name = contents[0]
+        size = int(contents[1])
+        self.fileDict[name] = size
 
-            print("File's name:", name," Files Size: ", size, "bits")
-            inquire = input("Do you wish to accept the file? [yes/no]\n").lower().strip()
+        print("File's name:", name, " Files Size: ", size, "bits")
+        inquire = input("Do you wish to accept the file? [yes/no]\n").lower().strip()
 
-            sender.send(inquire.encode("utf-8"))
+        sender.send(inquire.encode("utf-8"))
 
-            if(inquire == "yes"):
-                bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True,
-                           unit_divisor=2048)
-                with open(f"recv_{name}", "w") as f:
-                    while True:
-                        data = sender.recv(2048).decode("utf-8")
+        if (inquire == "yes"):
+            bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True,
+                       unit_divisor=2048)
+            with open(f"recv_{name}", "w") as f:
+                while True:
+                    data = sender.recv(2048).decode("utf-8")
 
-                        if not data:
-                            break
+                    if not data:
+                        break
 
-                        f.write(data)
-                        bar.update(len(data))
+                    f.write(data)
+                    bar.update(len(data))
+        else:
+            reply = sender.recv(2048).decode("utf-8")
+            print(f"Does sender have additional files? {reply}")
+            if reply == "yes":
+                self.get_file(sender)
             else:
-                reply = sender.recv(2048).decode("utf-8")
-                print(f"Does sender have additional files? {reply}")
-                if reply == "yes":
-                    self.get_file(sender)
-                else:
-                    return
+                return
 
+    def query_file(self, qFile):
+        if qFile in self.fileDict:
+            print("File found.\n File list: " + self.fileDict.keys() + "\n")
+
+        else:
+            print("File not found.\nFile list" + self.fileDict.keys() + "\n")
 
     def send_file(self, target):
         name = input("Input file name:")
@@ -81,10 +89,10 @@ class App:
     def dataprotocol(self):
         if self.setting == "host":
             receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            receiver.bind(('', self.TRANSFERPORT))
+            receiver.bind((self.IP, self.TRANSFERPORT))
             print("Host IP:", self.IP)
             receiver.listen()
-            print("Awaiting Sender Connection...")
+            print("Awaiting Sender Connection.]..")
 
             sender, address = receiver.accept()
             print(f"Sender connected from {address[0]}:{address[1]}")
@@ -96,7 +104,7 @@ class App:
 
         if self.setting == "client":
             sender = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sender.connect((self.IP,self.TRANSFERPORT))
+            sender.connect((self.IP, self.TRANSFERPORT))
 
             self.send_file(sender)
 
@@ -123,8 +131,6 @@ class App:
         sockets_list = [server_socket]
 
         clients = {}
-
-
 
         def receive_message(client_socket):
             try:
@@ -187,12 +193,9 @@ class App:
 
             except Exception as e:
                 break
-                #sys.exit("Connection Termination Request Accepted from Peer")
+                # sys.exit("Connection Termination Request Accepted from Peer")
         time.sleep(10)
         self.ClientFunctions()
-
-
-
 
     def ClientFunctions(self):
         HEADER_LENGTH = 10
@@ -212,6 +215,7 @@ class App:
 
         username = my_user.encode("utf-8")
         username_header = f"{len(username):<{HEADER_LENGTH}}".encode("utf-8")
+
         client_socket.send(username_header + username)
 
         while True:
@@ -265,6 +269,7 @@ class App:
     def Startup(self, x):
         options = ["host", "join", "quit"]
         fileshare = input("Send/receive files? [yes/no]\n").lower().strip()
+        userDict = {}
 
         if x in options:
             if x == "host" and fileshare == "yes":

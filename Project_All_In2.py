@@ -21,6 +21,7 @@ class App:
         self.cancel = ["quit", "kill", "stop", "terminate"]
         self.query = ["ask"]
         self.send = ["send", "transfer"]
+        self.files = {}
 
     def host_mode(self):
         host = socket.gethostbyname(socket.gethostname())
@@ -30,7 +31,6 @@ class App:
         server.bind((host, port))
         server.listen()
         storage = {}
-        files = {}
         users = []
         clients = []
 
@@ -41,45 +41,42 @@ class App:
         def query():
             print("Query call")
             report = ""
-            for x in files:
-                report = report + "Name: " + x + "  Owner: " + files[x] + "\n"
+            for x in self.files:
+                report = report + "Name: " + x + "  Owner: " + self.files[x] + "\n"
             broadcast(report.encode('utf-8'))
 
-        def filerequest(name):
+        def fileRequest(name):
             if name in storage:
+                print("File found.\n File list: " + self.files.keys() + "\n")
                 storage[name].send("Are you willing to share your file?".encode('utf-8'))
                 response = storage[name].recv(1024).decode('utf-8')
 
             else:
-                broadcast("Target not found".encode('utf-8'))
+                broadcast("File not found\n".encode('utf-8'))
 
         def register(name, sender):
             print("Register call")
-            files.update({name: sender})
+            self.files.update({name: sender})
 
         def deregister(name, sender):
             print(name, sender)
             print("Deregister call")
-            print(files[name])
-            if sender == files[name]:
-                del files[name]
+            print(self.files[name])
+            if sender == self.files[name]:
+                del self.files[name]
 
-
-
-        def privatemessage(name,pm,requestee):
+        def privatemessage(name, pm, requestee):
             if name in storage:
                 storage[name].send(pm.encode('utf-8'))
             else:
                 storage[requestee].send("User not available".encode('utf-8'))
-
-
 
         def handle_client(client):
             while True:
                 try:
                     message = client.recv(1024).decode('utf-8')
                     contents = message.split("_")
-                    #if contents[1] in self.send:
+                    # if contents[1] in self.send:
                     #    message = "User has requested file transfer" + "_" + contents[0].replace(":", "")
                     #    broadcast(message.encode('utf-8'), 1)
                     if contents[1] in self.query:
@@ -92,7 +89,7 @@ class App:
                         client.send('Enter the name of the request target: '.encode('utf-8'))
                         response = client.recv(1024).decode('utf-8')
                         target = response.split("_")
-                        filerequest(target[1])
+                        fileRequest(target[1])
 
                     elif contents[1] == "private":
                         client.send('Who would you like to send a Private Message to?'.encode('utf-8'))
@@ -154,7 +151,6 @@ class App:
                 thread = threading.Thread(target=handle_client, args=(client,))
                 thread.start()
 
-
         receive()
 
     def client_mode(self):
@@ -185,7 +181,6 @@ class App:
                 message = f'{user}:_{text}'
                 client.send(message.encode('utf-8'))
 
-
         receive_thread = threading.Thread(target=client_receive)
         receive_thread.start()
 
@@ -198,7 +193,7 @@ class App:
         name = contents[0]
         size = int(contents[1])
 
-        bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True, unit_divisor=2048)
+        #bar = tqdm(range(size), f"Receiving {name}", unit="B", unit_scale=True, unit_divisor=2048)
         with open(f"recv_{name}", "w") as f:
             while True:
                 data = sender.recv(2048).decode("utf-8")
@@ -207,23 +202,29 @@ class App:
                     break
 
                 f.write(data)
-                bar.update(len(data))
+                #bar.update(len(data))
 
     def send_file(self, target):
-        name = input("Input file name: ")
-        size = os.path.getsize(name)
+        while True:
+            name = input("\nInput file name: \n")
+            if name in self.files:
+                print("File found.")
+                break
+            else:
+                print("File not found.\nFile list: ", list(self.files.keys()))
 
+        size = os.path.getsize(name)
         data = f"{name}_{size}"
         target.send(data.encode("utf-8"))
 
-        bar = tqdm(range(size), f"Sending {name}", unit="B", unit_scale=True, unit_divisor=2048)
+        #bar = tqdm(range(size), f"Sending {name}", unit="B", unit_scale=True, unit_divisor=2048)
         with open(name, "r") as f:
             while True:
                 data = f.read(2048)
                 if not data:
                     break
                 target.send(data.encode("utf-8"))
-                bar.update(len(data))
+                #bar.update(len(data))
 
     def data_protocol(self):
         if self.setting == "host":
@@ -243,12 +244,18 @@ class App:
 
         if self.setting == "client":
             sender = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sender.connect((self.IP,self.Transfer))
+            sender.connect((self.IP, self.Transfer))
 
             self.send_file(sender)
 
             sender.close()
             time.sleep(10)
+
+    def fileList(self):
+        all_files = os.listdir()
+        txt_files = filter(lambda x: x[-4:] == '.txt', all_files)
+        for x in txt_files:
+            self.files.update({x: os.path.getsize(x)})
 
     def Startup(self, x):
         options = ["host", "join", "quit"]
@@ -260,6 +267,7 @@ class App:
                 self.data_protocol()
                 self.host_mode()
             elif x == "join" and fileshare == "yes":
+                self.fileList()
                 self.setting = "client"
                 self.data_protocol()
                 self.client_mode()

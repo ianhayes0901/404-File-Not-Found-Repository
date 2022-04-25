@@ -81,7 +81,7 @@ class App:
     def dataprotocol(self):
         if self.setting == "host":
             receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            receiver.bind(('', self.TRANSFERPORT))
+            receiver.bind((self.IP, self.TRANSFERPORT))
             print("Host IP:", self.IP)
             receiver.listen()
             print("Awaiting Sender Connection...")
